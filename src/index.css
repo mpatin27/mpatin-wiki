@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-wiki-bg text-wiki-text font-sans;
+  overflow: hidden;
+}
+
+/* Scrollbars modernes et fines */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+
+/* CORRECTION ICI : On utilise @apply ou la syntaxe standard */
+::-webkit-scrollbar-track { 
+  background: transparent; 
+}
+
+::-webkit-scrollbar-thumb { 
+  @apply bg-wiki-border rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover { 
+  @apply bg-wiki-muted; 
+}
+
+/* Utilitaires Glassmorphism */
+.glass {
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Animation douce à l'arrivée */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-enter {
+  animation: fadeIn 0.4s ease-out forwards;
+}
