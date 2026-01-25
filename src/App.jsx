@@ -3,8 +3,8 @@ import { BrowserRouter, Routes, Route, useLocation, Link, useNavigate } from 're
 import { supabase } from './supabaseClient';
 import ReactMarkdown from 'react-markdown';
 import rehypeSlug from 'rehype-slug';
-// AJOUT DE LayoutGrid ICI ▼
-import { Search, Book, Menu, Edit, LogOut, Home, Lock, Loader2, Calendar, Tag, FilePlus, Star, Terminal, LogIn, User, Users, LayoutGrid } from 'lucide-react';
+import { useReactToPrint } from 'react-to-print';
+import { Search, Book, Menu, Edit, LogOut, Home, Lock, Loader2, Calendar, Tag, FilePlus, Star, Terminal, LogIn, User, Users, LayoutGrid, Printer } from 'lucide-react';
 
 // IMPORTS COMPOSANTS
 import FileTree from './components/FileTree';
@@ -13,15 +13,18 @@ import StatusBar from './components/StatusBar';
 import CodeBlock from './components/CodeBlock';
 import TableOfContents from './components/TableOfContents';
 import CommentsSection from './components/CommentsSection';
+import { useToast } from './components/ToastContext';
+import Mermaid from './components/Mermaid';
 
 // IMPORTS PAGES
 import HomePage from './pages/Home';
 import Login from './pages/Login';
 import Admin from './pages/Admin';
 import UsersManager from './pages/UsersManager';
-import Manager from './pages/Manager'; // <--- IMPORT DU MANAGER
+import Manager from './pages/Manager';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
+import UpdatePassword from './pages/UpdatePassword';
 
 const formatDate = (dateString) => {
   if (!dateString) return '';
@@ -36,34 +39,37 @@ const WikiPage = ({ posts, isLoading, onTagClick, myFavorites, onToggleFavorite,
   const navigate = useNavigate();
   const slug = loc.pathname.split('/').pop();
   const post = posts.find(p => p.slug === slug);
-  
   const viewedRef = useRef(''); 
+  const { addToast } = useToast();
+
+  // 1. REF POUR PDF
+  const printRef = useRef(null);
+
+  // 2. FONCTION IMPRESSION (CORRIGÉE)
+  const handlePrint = useReactToPrint({
+    contentRef: printRef, // <--- C'EST ICI LA CORRECTION (au lieu de content: () => ...)
+    documentTitle: post ? post.title : 'Wiki-OS-Article',
+    onAfterPrint: () => addToast("Impression lancée !", "success"),
+    onPrintError: () => addToast("Erreur lors de l'impression", "error"),
+  });
 
   useEffect(() => {
     if (post) {
       document.title = `${post.title} | Wiki OS`;
-
       if (viewedRef.current !== post.slug) {
         const viewTimer = setTimeout(async () => {
           const { error } = await supabase.rpc('increment_views', { post_id: post.id });
-          if (!error) {
-            viewedRef.current = post.slug;
-          }
+          if (!error) viewedRef.current = post.slug;
         }, 2000);
         return () => clearTimeout(viewTimer);
       }
-
       try {
         const history = JSON.parse(localStorage.getItem('wiki_history') || '[]');
         if (!history.find(h => h.id === post.id)) {
-           const newHistory = [
-            { id: post.id, title: post.title, slug: post.slug, folder: post.folder },
-            ...history
-          ].slice(0, 10);
+           const newHistory = [{ id: post.id, title: post.title, slug: post.slug, folder: post.folder }, ...history].slice(0, 10);
           localStorage.setItem('wiki_history', JSON.stringify(newHistory));
         }
       } catch (e) { console.error(e); }
-
     } else if (!isLoading) {
       document.title = 'Wiki OS - Article Introuvable';
     }
@@ -89,10 +95,24 @@ const WikiPage = ({ posts, isLoading, onTagClick, myFavorites, onToggleFavorite,
       <div className="mb-8 pb-6 border-b border-wiki-border">
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
           <div className="w-full overflow-hidden">
+             
+             {!post.is_public && (
+               <div className="mb-4 bg-orange-500/10 border border-orange-500/30 text-orange-400 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 w-fit">
+                 <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"/>
+                 MODE BROUILLON - Visible uniquement par les administrateurs
+               </div>
+             )}
+
              <div className="flex items-center gap-2 text-sm text-wiki-accent mb-3 font-mono bg-wiki-accent/10 w-fit px-2 py-1 rounded"><span>{post.folder}</span><span>/</span><span>{post.slug}</span></div>
              <h1 className="text-3xl md:text-5xl font-bold text-wiki-text tracking-tight break-words">{post.title}</h1>
           </div>
           <div className="shrink-0 flex items-center gap-2">
+            
+            {/* BOUTON PDF */}
+            <button onClick={handlePrint} className="p-2 rounded-lg bg-wiki-surface border border-wiki-border text-wiki-muted hover:text-wiki-text transition-colors" title="Imprimer / PDF">
+               <Printer size={18} />
+            </button>
+
             <button onClick={handleStarClick} className={`p-2 rounded-lg border transition-all ${isFavorite ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-500' : 'bg-wiki-surface border-wiki-border text-wiki-muted hover:text-wiki-text'}`}>
               <Star size={18} fill={isFavorite ? "currentColor" : "none"} />
             </button>
@@ -115,16 +135,48 @@ const WikiPage = ({ posts, isLoading, onTagClick, myFavorites, onToggleFavorite,
         </div>
       </div>
 
-      {/* CONTENU + SOMMAIRE */}
-      <div className="flex items-start">
-        <div className="flex-1 min-w-0 prose prose-invert prose-slate max-w-none prose-headings:font-bold prose-h1:text-2xl md:prose-h1:text-3xl prose-p:text-wiki-muted prose-p:leading-relaxed prose-code:text-wiki-accent prose-code:bg-wiki-surface prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-transparent prose-pre:p-0 prose-pre:border-none prose-img:rounded-xl prose-img:border prose-img:border-wiki-border">
-          <ReactMarkdown rehypePlugins={[rehypeSlug]} components={{ code({node, inline, className, children, ...props}) { const match = /language-(\w+)/.exec(className || ''); return !inline && match ? (<CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} />) : <code className={className} {...props}>{children}</code> } }}>{post.content}</ReactMarkdown>
+      {/* ZONE IMPRIMABLE */}
+      {/* On utilise 'print:...' pour surcharger le style sombre lors de l'impression */}
+      <div 
+        ref={printRef} 
+        className="print:p-10 print:bg-white print:text-black print:absolute print:top-0 print:left-0 print:w-full print:z-50"
+      >
+        <div className="flex items-start">
+          
+          <div className="flex-1 min-w-0 prose prose-invert prose-slate max-w-none prose-headings:font-bold prose-h1:text-2xl md:prose-h1:text-3xl prose-p:text-wiki-muted prose-p:leading-relaxed prose-code:text-wiki-accent prose-code:bg-wiki-surface prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-transparent prose-pre:p-0 prose-pre:border-none prose-img:rounded-xl prose-img:border prose-img:border-wiki-border print:prose-headings:text-black print:prose-p:text-black print:prose-code:text-black print:prose-code:bg-gray-100">
+            
+            {/* Titre visible uniquement à l'impression */}
+            <h1 className="hidden print:block text-4xl font-bold mb-6 text-black border-b pb-4">{post.title}</h1>
+
+            <ReactMarkdown 
+              rehypePlugins={[rehypeSlug]} 
+              components={{ 
+                code({node, inline, className, children, ...props}) { 
+                  const match = /language-(\w+)/.exec(className || '');
+                  if (!inline && match && match[1] === 'mermaid') {
+                    return <Mermaid chart={String(children).replace(/\n$/, '')} />;
+                  }
+                  return !inline && match ? (
+                    <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} />
+                  ) : (
+                    <code className={className} {...props}>{children}</code> 
+                  );
+                } 
+              }}
+            >
+              {post.content}
+            </ReactMarkdown>
+          </div>
+
+          <div className="print:hidden">
+            <TableOfContents content={post.content} />
+          </div>
         </div>
-        <TableOfContents content={post.content} />
       </div>
 
-      {/* SECTION COMMENTAIRES */}
-      <CommentsSection postId={post.id} session={session} isAdmin={isAdmin} />
+      <div className="print:hidden">
+        <CommentsSection postId={post.id} session={session} isAdmin={isAdmin} />
+      </div>
     </div>
   );
 };
@@ -142,6 +194,7 @@ function AppContent() {
   const [userProfile, setUserProfile] = useState(null); 
   const [myFavorites, setMyFavorites] = useState([]);   
   
+  const { addToast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -149,14 +202,13 @@ function AppContent() {
 
   // INITIALISATION
   useEffect(() => {
-    fetchPosts();
-    
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) {
         fetchFavorites(session.user.id);
         fetchProfile(session.user.id);
       }
+      fetchPosts(session);
     });
 
     const { data: { subscription: authListener } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -168,17 +220,33 @@ function AppContent() {
         setMyFavorites([]);
         setUserProfile(null);
       }
+      fetchPosts(session);
     });
 
     const channel = supabase.channel('public:wiki_posts')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wiki_posts' }, () => fetchPosts())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wiki_posts' }, () => {
+        supabase.auth.getSession().then(({ data }) => fetchPosts(data.session));
+      })
       .subscribe();
 
     return () => { authListener.unsubscribe(); supabase.removeChannel(channel); };
   }, []);
 
-  const fetchPosts = async () => {
-    const { data } = await supabase.from('wiki_posts').select('*').eq('is_public', true).order('title');
+  // CHARGEMENT DES POSTS (FILTRAGE BROUILLON)
+  const fetchPosts = async (currentSession) => {
+    let userIsAdmin = false;
+    if (currentSession?.user?.id) {
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', currentSession.user.id).single();
+      userIsAdmin = profile?.role === 'admin';
+    }
+
+    let query = supabase.from('wiki_posts').select('*').order('title');
+
+    if (!userIsAdmin) {
+      query = query.eq('is_public', true);
+    }
+    
+    const { data } = await query;
     if(data) setPosts(data);
     setIsLoading(false);
   };
@@ -197,17 +265,21 @@ function AppContent() {
     if (!session) return;
     const userId = session.user.id;
     const isAlreadyFav = myFavorites.includes(postId);
+    
     if (isAlreadyFav) {
       setMyFavorites(prev => prev.filter(id => id !== postId));
       await supabase.from('user_favorites').delete().eq('user_id', userId).eq('post_id', postId);
+      addToast("Retiré des favoris", 'info');
     } else {
       setMyFavorites(prev => [...prev, postId]);
       await supabase.from('user_favorites').insert([{ user_id: userId, post_id: postId }]);
+      addToast("Ajouté aux favoris", 'success');
     }
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    addToast("À bientôt !", 'info');
     navigate('/');
   };
 
@@ -243,12 +315,9 @@ function AppContent() {
               <Link to="/admin" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-wiki-accent/10 border border-wiki-accent/20 rounded-lg px-3 py-2 text-sm text-wiki-accent hover:bg-wiki-accent hover:text-white transition-colors">
                 <FilePlus size={14} className="shrink-0" /><span className="truncate font-bold">Nouvel Article</span>
               </Link>
-              
-              {/* LIEN VERS LE MANAGER (Avec LayoutGrid) */}
               <Link to="/manager" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2 text-sm text-green-400 hover:bg-green-500 hover:text-white transition-colors">
                 <LayoutGrid size={14} className="shrink-0" /><span className="truncate font-medium">Gestion Contenu</span>
               </Link>
-
               <Link to="/users" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-lg px-3 py-2 text-sm text-purple-400 hover:bg-purple-500 hover:text-white transition-colors">
                 <Users size={14} className="shrink-0" /><span className="truncate font-bold">Gérer Utilisateurs</span>
               </Link>
@@ -271,8 +340,12 @@ function AppContent() {
           {session ? (
             <div className="flex items-center gap-2 w-full justify-between p-2 rounded-lg bg-wiki-bg/50 border border-wiki-border">
               <Link to="/profile" onClick={handleNavigate} className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-70 transition-opacity cursor-pointer group" title="Mon Profil">
-                <div className="w-8 h-8 rounded-full bg-wiki-accent/20 flex items-center justify-center text-wiki-accent shrink-0 font-bold uppercase group-hover:bg-wiki-accent group-hover:text-white transition-colors">
-                   {userProfile?.username ? userProfile.username[0] : <User size={14} />}
+                <div className="w-8 h-8 rounded-full bg-wiki-accent/20 flex items-center justify-center text-wiki-accent shrink-0 font-bold uppercase group-hover:bg-wiki-accent group-hover:text-white transition-colors overflow-hidden">
+                   {userProfile?.avatar_url ? (
+                     <img src={userProfile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                   ) : (
+                     userProfile?.username ? userProfile.username[0] : <User size={14} />
+                   )}
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-xs font-bold text-wiki-text truncate max-w-[100px]">{userProfile?.username || 'Chargement...'}</span>
@@ -305,10 +378,10 @@ function AppContent() {
             <Route path="/wiki/:slug" element={<WikiPage posts={posts} isLoading={isLoading} onTagClick={handleTagClick} myFavorites={myFavorites} onToggleFavorite={handleToggleFavorite} session={session} isAdmin={isAdmin} />} />
             <Route path="/login" element={<Login />} />
             <Route path="/profile" element={ <Profile onProfileUpdate={() => session && fetchProfile(session.user.id)} /> } />
+            <Route path="/update-password" element={<UpdatePassword />} />
             
-            {/* ROUTES ADMIN */}
             <Route path="/users" element={isAdmin ? <UsersManager /> : <NotFound />} />
-            <Route path="/manager" element={isAdmin ? <Manager /> : <NotFound />} /> {/* <--- ROUTE MANAGER */}
+            <Route path="/manager" element={isAdmin ? <Manager /> : <NotFound />} />
             <Route path="/admin" element={isAdmin ? <Admin /> : <NotFound />} />
             <Route path="/admin/:slug" element={isAdmin ? <Admin /> : <NotFound />} />
             
