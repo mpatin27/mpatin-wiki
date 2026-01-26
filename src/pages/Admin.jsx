@@ -47,7 +47,7 @@ export default function Admin() {
   // Données Article
   const [id, setId] = useState(null);
   const [title, setTitle] = useState('');
-  const [folder, setFolder] = useState('general');
+  const [folder, setFolder] = useState('');
   const [tags, setTags] = useState([]);
   const [content, setContent] = useState('');
   const [isPublic, setIsPublic] = useState(true);
