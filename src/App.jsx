@@ -4,17 +4,25 @@ import { supabase } from './supabaseClient';
 import ReactMarkdown from 'react-markdown';
 import rehypeSlug from 'rehype-slug';
 import { useReactToPrint } from 'react-to-print';
-import { Search, Book, Menu, Edit, LogOut, Home, Lock, Loader2, Calendar, Tag, FilePlus, Star, Terminal, LogIn, User, Users, LayoutGrid, Printer } from 'lucide-react';
+import { Search, Menu, Edit, LogOut, Home, Loader2, Calendar, Tag, FilePlus, Star, Terminal, LogIn, User, Users, LayoutGrid, Printer, Clock, LayoutDashboard } from 'lucide-react';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css'; // Le style des formules
 
 // IMPORTS COMPOSANTS
 import FileTree from './components/FileTree';
 import CommandPalette from './components/CommandPalette';
 import StatusBar from './components/StatusBar';
-import CodeBlock from './components/CodeBlock';
+import CodeBlock from './components/CodeBlock'; // <--- Nouveau composant Code
 import TableOfContents from './components/TableOfContents';
 import CommentsSection from './components/CommentsSection';
 import { useToast } from './components/ToastContext';
 import Mermaid from './components/Mermaid';
+import { ArticleSkeleton, Skeleton } from './components/SkeletonLoader'; // <--- Nouveau Squelette
+import Backlinks from './components/Backlinks';
+
+// IMPORTS UTILITAIRES
+import { parseWikiLinks } from './utils/wikiLinkParser';
 
 // IMPORTS PAGES
 import HomePage from './pages/Home';
@@ -25,6 +33,7 @@ import Manager from './pages/Manager';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 import UpdatePassword from './pages/UpdatePassword';
+import Dashboard from './pages/Dashboard'; // Importe la page
 
 const formatDate = (dateString) => {
   if (!dateString) return '';
@@ -39,15 +48,38 @@ const WikiPage = ({ posts, isLoading, onTagClick, myFavorites, onToggleFavorite,
   const navigate = useNavigate();
   const slug = loc.pathname.split('/').pop();
   const post = posts.find(p => p.slug === slug);
-  const viewedRef = useRef(''); 
+  const viewedRef = useRef('');
   const { addToast } = useToast();
-
-  // 1. REF POUR PDF
   const printRef = useRef(null);
 
-  // 2. FONCTION IMPRESSION (CORRIGÉE)
+  // --- LOGIQUE SCROLL & PROGRESSION ---
+  const [scrollProgress, setScrollProgress] = useState(0);
+
+  useEffect(() => {
+    // On écoute le scroll sur le conteneur principal défini dans AppContent
+    const mainContainer = document.getElementById('main-content');
+
+    const handleScroll = () => {
+      if (!mainContainer) return;
+      const { scrollTop, scrollHeight, clientHeight } = mainContainer;
+      const progress = (scrollTop / (scrollHeight - clientHeight)) * 100;
+      setScrollProgress(progress);
+    };
+
+    if (mainContainer) {
+      mainContainer.scrollTop = 0; // Reset scroll en haut
+      mainContainer.addEventListener('scroll', handleScroll);
+    }
+
+    return () => mainContainer?.removeEventListener('scroll', handleScroll);
+  }, [slug]);
+
+  // Calcul du temps de lecture (200 mots/min)
+  const readingTime = post ? Math.ceil(post.content.split(/\s+/).length / 200) : 1;
+  // ------------------------------------
+
   const handlePrint = useReactToPrint({
-    contentRef: printRef, // <--- C'EST ICI LA CORRECTION (au lieu de content: () => ...)
+    contentRef: printRef,
     documentTitle: post ? post.title : 'Wiki-OS-Article',
     onAfterPrint: () => addToast("Impression lancée !", "success"),
     onPrintError: () => addToast("Erreur lors de l'impression", "error"),
@@ -66,7 +98,7 @@ const WikiPage = ({ posts, isLoading, onTagClick, myFavorites, onToggleFavorite,
       try {
         const history = JSON.parse(localStorage.getItem('wiki_history') || '[]');
         if (!history.find(h => h.id === post.id)) {
-           const newHistory = [{ id: post.id, title: post.title, slug: post.slug, folder: post.folder }, ...history].slice(0, 10);
+          const newHistory = [{ id: post.id, title: post.title, slug: post.slug, folder: post.folder }, ...history].slice(0, 10);
           localStorage.setItem('wiki_history', JSON.stringify(newHistory));
         }
       } catch (e) { console.error(e); }
@@ -79,103 +111,123 @@ const WikiPage = ({ posts, isLoading, onTagClick, myFavorites, onToggleFavorite,
 
   const handleStarClick = () => {
     if (!session) {
-      if(confirm("Connectez-vous pour gérer vos favoris !")) navigate('/login', { state: { from: loc } });
+      if (confirm("Connectez-vous pour gérer vos favoris !")) navigate('/login', { state: { from: loc } });
       return;
     }
     onToggleFavorite(post.id);
   };
 
-  if (isLoading) return <div className="h-full flex flex-col items-center justify-center text-wiki-muted animate-pulse"><Loader2 size={40} className="animate-spin mb-4 text-wiki-accent"/><span className="font-mono text-sm">Chargement...</span></div>;
+  // Chargement élégant avec Skeleton
+  if (isLoading) return <ArticleSkeleton />;
   if (!post) return <NotFound />;
 
   return (
-    <div className="max-w-7xl mx-auto p-6 md:p-10 animate-enter pb-20">
-      
-      {/* HEADER ARTICLE */}
-      <div className="mb-8 pb-6 border-b border-wiki-border">
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
-          <div className="w-full overflow-hidden">
-             
-             {!post.is_public && (
-               <div className="mb-4 bg-orange-500/10 border border-orange-500/30 text-orange-400 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 w-fit">
-                 <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"/>
-                 MODE BROUILLON - Visible uniquement par les administrateurs
-               </div>
-             )}
+    <div className="relative">
 
-             <div className="flex items-center gap-2 text-sm text-wiki-accent mb-3 font-mono bg-wiki-accent/10 w-fit px-2 py-1 rounded"><span>{post.folder}</span><span>/</span><span>{post.slug}</span></div>
-             <h1 className="text-3xl md:text-5xl font-bold text-wiki-text tracking-tight break-words">{post.title}</h1>
+      {/* BARRE DE PROGRESSION LECTURE */}
+      <div className="sticky top-0 left-0 w-full h-1 z-50 bg-transparent">
+        <div
+          className="h-full bg-wiki-accent shadow-[0_0_10px_rgba(59,130,246,0.5)] transition-all duration-100 ease-out"
+          style={{ width: `${scrollProgress}%` }}
+        />
+      </div>
+
+      <div className="max-w-7xl mx-auto p-6 md:p-10 animate-enter pb-20">
+
+        {/* HEADER ARTICLE */}
+        <div className="mb-8 pb-6 border-b border-wiki-border">
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
+            <div className="w-full overflow-hidden">
+
+              {/* Badge Brouillon */}
+              {!post.is_public && (
+                <div className="mb-4 bg-orange-500/10 border border-orange-500/30 text-orange-400 px-3 py-2 rounded-lg text-sm font-bold flex items-center gap-2 w-fit">
+                  <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                  MODE BROUILLON
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 text-sm text-wiki-accent mb-3 font-mono bg-wiki-accent/10 w-fit px-2 py-1 rounded"><span>{post.folder}</span><span>/</span><span>{post.slug}</span></div>
+              <h1 className="text-3xl md:text-5xl font-bold text-wiki-text tracking-tight break-words">{post.title}</h1>
+            </div>
+
+            <div className="shrink-0 flex items-center gap-2">
+              <button onClick={handlePrint} className="p-2 rounded-lg bg-wiki-surface border border-wiki-border text-wiki-muted hover:text-wiki-text transition-colors" title="Imprimer / PDF"><Printer size={18} /></button>
+              <button onClick={handleStarClick} className={`p-2 rounded-lg border transition-all ${isFavorite ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-500' : 'bg-wiki-surface border-wiki-border text-wiki-muted hover:text-wiki-text'}`}><Star size={18} fill={isFavorite ? "currentColor" : "none"} /></button>
+              {isAdmin && (
+                <Link to={`/admin/${post.slug}`} className="flex items-center gap-2 text-sm text-wiki-muted hover:text-wiki-accent bg-wiki-surface border border-wiki-border px-4 py-2 rounded-lg transition-colors font-medium">
+                  <Edit size={16} /> <span className="hidden sm:inline">Modifier</span>
+                </Link>
+              )}
+            </div>
           </div>
-          <div className="shrink-0 flex items-center gap-2">
-            
-            {/* BOUTON PDF */}
-            <button onClick={handlePrint} className="p-2 rounded-lg bg-wiki-surface border border-wiki-border text-wiki-muted hover:text-wiki-text transition-colors" title="Imprimer / PDF">
-               <Printer size={18} />
-            </button>
 
-            <button onClick={handleStarClick} className={`p-2 rounded-lg border transition-all ${isFavorite ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-500' : 'bg-wiki-surface border-wiki-border text-wiki-muted hover:text-wiki-text'}`}>
-              <Star size={18} fill={isFavorite ? "currentColor" : "none"} />
-            </button>
-            {isAdmin && (
-              <Link to={`/admin/${post.slug}`} className="flex items-center gap-2 text-sm text-wiki-muted hover:text-wiki-accent bg-wiki-surface border border-wiki-border px-4 py-2 rounded-lg transition-colors font-medium">
-                <Edit size={16} /> <span className="hidden sm:inline">Modifier</span>
-              </Link>
+          <div className="flex flex-wrap items-center gap-4 text-xs text-wiki-muted font-mono">
+            <div className="flex items-center gap-1.5"><Calendar size={12} /><span>{formatDate(post.updated_at || post.created_at)}</span></div>
+
+            {/* Temps de lecture */}
+            <div className="flex items-center gap-1.5 text-wiki-text font-bold">
+              <span className="text-wiki-border">|</span>
+              <Clock size={12} className="text-wiki-accent" />
+              <span>{readingTime} min de lecture</span>
+            </div>
+
+            {post.views !== undefined && (
+              <div className="flex items-center gap-1.5 text-wiki-accent"><span className="text-wiki-border">|</span><span>{post.views} vues</span></div>
             )}
+            {post.tags && post.tags.length > 0 && (<div className="flex items-center gap-2"><span className="text-wiki-border">|</span>{post.tags.map(tag => (<button key={tag} onClick={() => onTagClick(tag)} className="flex items-center gap-1 bg-wiki-surface px-2 py-0.5 rounded text-wiki-accent border border-wiki-border/50 hover:bg-wiki-accent hover:text-white transition-colors cursor-pointer"><Tag size={10} /> {tag}</button>))}</div>)}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-4 text-xs text-wiki-muted font-mono">
-          <div className="flex items-center gap-1.5"><Calendar size={12} /><span>Mis à jour le {formatDate(post.updated_at || post.created_at)}</span></div>
-          {post.views !== undefined && (
-             <div className="flex items-center gap-1.5 text-wiki-accent">
-               <span className="text-wiki-border">|</span>
-               <span>{post.views} vues</span>
-             </div>
-          )}
-          {post.tags && post.tags.length > 0 && (<div className="flex items-center gap-2"><span className="text-wiki-border">|</span>{post.tags.map(tag => (<button key={tag} onClick={() => onTagClick(tag)} className="flex items-center gap-1 bg-wiki-surface px-2 py-0.5 rounded text-wiki-accent border border-wiki-border/50 hover:bg-wiki-accent hover:text-white transition-colors cursor-pointer"><Tag size={10} /> {tag}</button>))}</div>)}
-        </div>
-      </div>
 
-      {/* ZONE IMPRIMABLE */}
-      {/* On utilise 'print:...' pour surcharger le style sombre lors de l'impression */}
-      <div 
-        ref={printRef} 
-        className="print:p-10 print:bg-white print:text-black print:absolute print:top-0 print:left-0 print:w-full print:z-50"
-      >
-        <div className="flex items-start">
-          
-          <div className="flex-1 min-w-0 prose prose-invert prose-slate max-w-none prose-headings:font-bold prose-h1:text-2xl md:prose-h1:text-3xl prose-p:text-wiki-muted prose-p:leading-relaxed prose-code:text-wiki-accent prose-code:bg-wiki-surface prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-transparent prose-pre:p-0 prose-pre:border-none prose-img:rounded-xl prose-img:border prose-img:border-wiki-border print:prose-headings:text-black print:prose-p:text-black print:prose-code:text-black print:prose-code:bg-gray-100">
-            
-            {/* Titre visible uniquement à l'impression */}
-            <h1 className="hidden print:block text-4xl font-bold mb-6 text-black border-b pb-4">{post.title}</h1>
+        {/* ZONE IMPRIMABLE */}
+        <div
+          ref={printRef}
+          className="print:p-10 print:bg-white print:text-black print:absolute print:top-0 print:left-0 print:w-full print:z-50"
+        >
+          <div className="flex items-start">
+            <div className="flex-1 min-w-0 prose prose-invert prose-slate max-w-none prose-headings:font-bold prose-h1:text-2xl md:prose-h1:text-3xl prose-p:text-wiki-muted prose-p:leading-relaxed prose-code:text-wiki-accent prose-code:bg-wiki-surface prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-transparent prose-pre:p-0 prose-pre:border-none prose-img:rounded-xl prose-img:border prose-img:border-wiki-border print:prose-headings:text-black print:prose-p:text-black print:prose-code:text-black print:prose-code:bg-gray-100">
 
-            <ReactMarkdown 
-              rehypePlugins={[rehypeSlug]} 
-              components={{ 
-                code({node, inline, className, children, ...props}) { 
-                  const match = /language-(\w+)/.exec(className || '');
-                  if (!inline && match && match[1] === 'mermaid') {
-                    return <Mermaid chart={String(children).replace(/\n$/, '')} />;
+              <h1 className="hidden print:block text-4xl font-bold mb-6 text-black border-b pb-4">{post.title}</h1>
+
+              <ReactMarkdown
+                rehypePlugins={[rehypeSlug, rehypeKatex]}
+                remarkPlugins={[remarkMath]}
+                components={{
+                  code({ node, inline, className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || '');
+
+                    if (!inline && match && match[1] === 'mermaid') {
+                      return <Mermaid chart={String(children).replace(/\n$/, '')} />;
+                    }
+
+                    // Utilisation de notre CodeBlock amélioré
+                    return !inline && match ? (
+                      <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} />
+                    ) : (
+                      <code className={className} {...props}>{children}</code>
+                    );
                   }
-                  return !inline && match ? (
-                    <CodeBlock language={match[1]} value={String(children).replace(/\n$/, '')} />
-                  ) : (
-                    <code className={className} {...props}>{children}</code> 
-                  );
-                } 
-              }}
-            >
-              {post.content}
-            </ReactMarkdown>
-          </div>
+                }}
+              >
+                {parseWikiLinks(post.content)}
+              </ReactMarkdown>
+            </div>
 
-          <div className="print:hidden">
-            <TableOfContents content={post.content} />
+            <div className="print:hidden">
+              <TableOfContents content={post.content} />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="print:hidden">
-        <CommentsSection postId={post.id} session={session} isAdmin={isAdmin} />
+        {/* RETROLIENS */}
+        <div className="print:hidden">
+          <Backlinks currentSlug={post.slug} currentTitle={post.title} />
+        </div>
+
+        {/* COMMENTAIRES */}
+        <div className="print:hidden">
+          <CommentsSection postId={post.id} session={session} isAdmin={isAdmin} />
+        </div>
       </div>
     </div>
   );
@@ -188,12 +240,12 @@ function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteSearch, setPaletteSearch] = useState('');
-  
+
   // États Utilisateur
   const [session, setSession] = useState(null);
-  const [userProfile, setUserProfile] = useState(null); 
-  const [myFavorites, setMyFavorites] = useState([]);   
-  
+  const [userProfile, setUserProfile] = useState(null);
+  const [myFavorites, setMyFavorites] = useState([]);
+
   const { addToast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -245,9 +297,9 @@ function AppContent() {
     if (!userIsAdmin) {
       query = query.eq('is_public', true);
     }
-    
+
     const { data } = await query;
-    if(data) setPosts(data);
+    if (data) setPosts(data);
     setIsLoading(false);
   };
 
@@ -265,7 +317,7 @@ function AppContent() {
     if (!session) return;
     const userId = session.user.id;
     const isAlreadyFav = myFavorites.includes(postId);
-    
+
     if (isAlreadyFav) {
       setMyFavorites(prev => prev.filter(id => id !== postId));
       await supabase.from('user_favorites').delete().eq('user_id', userId).eq('post_id', postId);
@@ -292,7 +344,7 @@ function AppContent() {
 
   return (
     <div className="flex h-screen w-screen bg-wiki-bg text-wiki-text overflow-hidden font-sans selection:bg-wiki-accent/30">
-      
+
       {sidebarOpen && <div className="fixed inset-0 bg-black/60 z-30 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setSidebarOpen(false)} />}
 
       {/* SIDEBAR */}
@@ -301,17 +353,21 @@ function AppContent() {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 shrink-0">W</div>
           <span className="font-bold text-lg tracking-tight">Wiki<span className="text-wiki-accent">OS</span></span>
         </div>
-        
+
         <div className="p-3 space-y-1">
-          <button onClick={() => { setPaletteSearch(''); setPaletteOpen(true); if(window.innerWidth < 768) setSidebarOpen(false); }} className="w-full flex items-center gap-2 bg-wiki-bg border border-wiki-border rounded-lg px-3 py-2 text-sm text-wiki-muted hover:border-wiki-accent/50 hover:text-wiki-text transition-colors text-left">
+          <button onClick={() => { setPaletteSearch(''); setPaletteOpen(true); if (window.innerWidth < 768) setSidebarOpen(false); }} className="w-full flex items-center gap-2 bg-wiki-bg border border-wiki-border rounded-lg px-3 py-2 text-sm text-wiki-muted hover:border-wiki-accent/50 hover:text-wiki-text transition-colors text-left">
             <Search size={14} className="shrink-0" /><span className="truncate">Rechercher... (Ctrl+K)</span>
           </button>
           <Link to="/" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-transparent hover:bg-wiki-bg border border-transparent hover:border-wiki-border rounded-lg px-3 py-2 text-sm text-wiki-muted hover:text-wiki-accent transition-colors">
             <Home size={14} className="shrink-0" /><span className="truncate font-medium">Accueil</span>
           </Link>
-          
+
           {isAdmin && (
             <>
+              <Link to="/dashboard" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-orange-500/10 border border-orange-500/20 rounded-lg px-3 py-2 text-sm text-orange-400 hover:bg-orange-500 hover:text-white transition-colors">
+                <LayoutDashboard size={14} className="shrink-0" />
+                <span className="truncate font-bold">Tableau de Bord</span>
+              </Link>
               <Link to="/admin" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-wiki-accent/10 border border-wiki-accent/20 rounded-lg px-3 py-2 text-sm text-wiki-accent hover:bg-wiki-accent hover:text-white transition-colors">
                 <FilePlus size={14} className="shrink-0" /><span className="truncate font-bold">Nouvel Article</span>
               </Link>
@@ -326,14 +382,25 @@ function AppContent() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-2 py-2 custom-scrollbar">
-           {session && favoritePosts.length > 0 && (
-             <div className="mb-4 animate-enter">
-                <h3 className="text-xs font-bold text-wiki-muted uppercase tracking-wider px-4 mb-2 mt-2 flex items-center gap-2"><Star size={10} className="text-yellow-500 fill-yellow-500"/> Mes Favoris</h3>
-                <div className="space-y-0.5">{favoritePosts.map(fav => (<Link key={fav.id} to={`/wiki/${fav.slug}`} onClick={handleNavigate} className="block px-4 py-1.5 text-sm text-wiki-muted hover:text-wiki-text hover:bg-wiki-surface/50 rounded-md transition-colors truncate">{fav.title}</Link>))}</div>
-             </div>
-           )}
-           <h3 className="text-xs font-bold text-wiki-muted uppercase tracking-wider px-4 mb-2 mt-2 flex items-center gap-2"><Terminal size={10} /> Fichiers</h3>
-           <FileTree posts={posts} onNavigate={handleNavigate} />
+          {session && favoritePosts.length > 0 && (
+            <div className="mb-4 animate-enter">
+              <h3 className="text-xs font-bold text-wiki-muted uppercase tracking-wider px-4 mb-2 mt-2 flex items-center gap-2"><Star size={10} className="text-yellow-500 fill-yellow-500" /> Mes Favoris</h3>
+              <div className="space-y-0.5">{favoritePosts.map(fav => (<Link key={fav.id} to={`/wiki/${fav.slug}`} onClick={handleNavigate} className="block px-4 py-1.5 text-sm text-wiki-muted hover:text-wiki-text hover:bg-wiki-surface/50 rounded-md transition-colors truncate">{fav.title}</Link>))}</div>
+            </div>
+          )}
+          <h3 className="text-xs font-bold text-wiki-muted uppercase tracking-wider px-4 mb-2 mt-2 flex items-center gap-2"><Terminal size={10} /> Fichiers</h3>
+
+          {/* Skeleton Loader pour la sidebar */}
+          {isLoading ? (
+            <div className="px-4 space-y-3 mt-4">
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-5/6" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+          ) : (
+            <FileTree posts={posts} onNavigate={handleNavigate} />
+          )}
         </div>
 
         <div className="p-4 border-t border-wiki-border bg-wiki-surface/30">
@@ -341,11 +408,11 @@ function AppContent() {
             <div className="flex items-center gap-2 w-full justify-between p-2 rounded-lg bg-wiki-bg/50 border border-wiki-border">
               <Link to="/profile" onClick={handleNavigate} className="flex items-center gap-2 min-w-0 flex-1 hover:opacity-70 transition-opacity cursor-pointer group" title="Mon Profil">
                 <div className="w-8 h-8 rounded-full bg-wiki-accent/20 flex items-center justify-center text-wiki-accent shrink-0 font-bold uppercase group-hover:bg-wiki-accent group-hover:text-white transition-colors overflow-hidden">
-                   {userProfile?.avatar_url ? (
-                     <img src={userProfile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
-                   ) : (
-                     userProfile?.username ? userProfile.username[0] : <User size={14} />
-                   )}
+                  {userProfile?.avatar_url ? (
+                    <img src={userProfile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    userProfile?.username ? userProfile.username[0] : <User size={14} />
+                  )}
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-xs font-bold text-wiki-text truncate max-w-[100px]">{userProfile?.username || 'Chargement...'}</span>
@@ -356,41 +423,49 @@ function AppContent() {
             </div>
           ) : (
             <Link to="/login" state={{ from: location }} onClick={handleNavigate} className="flex items-center justify-center gap-2 w-full bg-wiki-surface hover:bg-wiki-accent/10 border border-wiki-border hover:border-wiki-accent text-wiki-muted hover:text-wiki-accent text-sm font-bold py-3 rounded-lg transition-all shadow-sm">
-               <LogIn size={16} /><span>Connexion / Inscription</span>
+              <LogIn size={16} /><span>Connexion / Inscription</span>
             </Link>
           )}
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 flex flex-col relative bg-gradient-to-br from-wiki-bg to-[#0b101b] min-w-0 transition-all duration-300">
+      {/* MAIN CONTENT - FIXED SCROLLING */}
+      <main className="flex-1 flex flex-col relative bg-gradient-to-br from-wiki-bg to-[#0b101b] min-w-0 transition-all duration-300 overflow-hidden">
+
         <header className="h-12 border-b border-wiki-border flex items-center px-4 bg-wiki-bg/80 backdrop-blur sticky top-0 z-20 font-mono text-sm shrink-0">
-           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 hover:bg-wiki-surface rounded-md mr-3 text-wiki-muted transition-colors"><Menu size={18} /></button>
-           <div className="flex items-center gap-2 text-wiki-muted overflow-hidden whitespace-nowrap">
-             <span className="text-wiki-accent hidden sm:inline">wiki</span><span className="text-wiki-border hidden sm:inline">/</span><span className="hidden sm:inline">~</span>
-             {currentPost ? (<><span className="text-wiki-border">/</span><span className="truncate font-bold text-wiki-text">{currentPost.title}</span></>) : (<><span className="text-wiki-border">/</span><span className="text-wiki-text">home</span></>)}
-           </div>
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 hover:bg-wiki-surface rounded-md mr-3 text-wiki-muted transition-colors"><Menu size={18} /></button>
+          <div className="flex items-center gap-2 text-wiki-muted overflow-hidden whitespace-nowrap">
+            <span className="text-wiki-accent hidden sm:inline">wiki</span><span className="text-wiki-border hidden sm:inline">/</span><span className="hidden sm:inline">~</span>
+            {currentPost ? (<><span className="text-wiki-border">/</span><span className="truncate font-bold text-wiki-text">{currentPost.title}</span></>) : (<><span className="text-wiki-border">/</span><span className="text-wiki-text">home</span></>)}
+          </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto scroll-smooth relative custom-scrollbar">
+        {/* CONTAINER SCROLLABLE AVEC ID 'main-content' */}
+        <div
+          id="main-content"
+          className="flex-1 relative min-h-0 overflow-y-auto scroll-smooth custom-scrollbar"
+        >
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/wiki/:slug" element={<WikiPage posts={posts} isLoading={isLoading} onTagClick={handleTagClick} myFavorites={myFavorites} onToggleFavorite={handleToggleFavorite} session={session} isAdmin={isAdmin} />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/profile" element={ <Profile onProfileUpdate={() => session && fetchProfile(session.user.id)} /> } />
+            <Route path="/profile" element={<Profile onProfileUpdate={() => session && fetchProfile(session.user.id)} />} />
             <Route path="/update-password" element={<UpdatePassword />} />
-            
+
+            {/* ROUTES ADMIN */}
             <Route path="/users" element={isAdmin ? <UsersManager /> : <NotFound />} />
             <Route path="/manager" element={isAdmin ? <Manager /> : <NotFound />} />
             <Route path="/admin" element={isAdmin ? <Admin /> : <NotFound />} />
             <Route path="/admin/:slug" element={isAdmin ? <Admin /> : <NotFound />} />
-            
+            <Route path="/dashboard" element={isAdmin ? <Dashboard /> : <NotFound />} />
+
             <Route path="*" element={<NotFound />} />
           </Routes>
         </div>
+
         <StatusBar postCount={posts.length} />
       </main>
-      
+
       <CommandPalette posts={posts} isOpen={paletteOpen} setIsOpen={setPaletteOpen} initialSearch={paletteSearch} />
     </div>
   );

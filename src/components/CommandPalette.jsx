@@ -1,126 +1,200 @@
-import { useState, useEffect, useRef } from 'react';
+import { Fragment, useState, useEffect } from 'react';
+import { Dialog, Combobox, Transition } from '@headlessui/react';
+import { Search, FileText, Hash } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Search, FileText, ArrowRight, X } from 'lucide-react';
 
-export default function CommandPalette({ posts, isOpen, setIsOpen, initialSearch = '' }) {
-  const [query, setQuery] = useState(initialSearch);
+export default function CommandPalette({ posts, isOpen, setIsOpen, initialSearch }) {
+  const [query, setQuery] = useState('');
   const navigate = useNavigate();
-  const inputRef = useRef(null);
 
-  // 1. Synchroniser la recherche si on l'ouvre via un Tag
   useEffect(() => {
-    setQuery(initialSearch);
-  }, [initialSearch, isOpen]);
+    if (initialSearch) setQuery(initialSearch);
+  }, [initialSearch]);
 
-  // 2. FOCUS AUTOMATIQUE à l'ouverture
   useEffect(() => {
-    if (isOpen) {
-      // Petit délai pour laisser le temps au DOM de s'afficher
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [isOpen]);
-
-  // 3. GESTION DE LA TOUCHE ECHAP (La correction demandée)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isOpen) {
-        setIsOpen(false);
+    const onKeydown = (event) => {
+      if (event.key === 'k' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        setIsOpen(!isOpen);
       }
     };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
   }, [isOpen, setIsOpen]);
 
-  // Filtrage des résultats
-  const filteredPosts = posts.filter(post => {
-    if (!query) return false;
-    const search = query.toLowerCase();
-    return (
-      post.title.toLowerCase().includes(search) ||
-      post.tags?.some(tag => tag.toLowerCase().includes(search)) ||
-      post.folder?.toLowerCase().includes(search)
-    );
-  });
+  // FONCTION INTELLIGENTE : Génère un extrait avec le mot surligné
+  const getSnippet = (content, searchTerm) => {
+    if (!content || !searchTerm) return null;
 
-  const handleSelect = (slug) => {
-    navigate(`/wiki/${slug}`);
-    setIsOpen(false);
-    setQuery('');
+    const lowerContent = content.toLowerCase();
+    const lowerSearch = searchTerm.toLowerCase();
+    const index = lowerContent.indexOf(lowerSearch);
+
+    if (index === -1) return null;
+
+    // On prend 30 caractères avant et 50 après
+    const start = Math.max(0, index - 30);
+    const end = Math.min(content.length, index + searchTerm.length + 50);
+
+    let snippet = content.substring(start, end);
+    if (start > 0) snippet = '...' + snippet;
+    if (end < content.length) snippet = snippet + '...';
+
+    return (
+      <span>
+        {snippet.split(new RegExp(`(${searchTerm})`, 'gi')).map((part, i) =>
+          part.toLowerCase() === lowerSearch ? (
+            <span key={i} className="bg-yellow-500/30 text-yellow-200 font-bold px-0.5 rounded border-b border-yellow-500/50">
+              {part}
+            </span>
+          ) : (
+            part
+          )
+        )}
+      </span>
+    );
   };
 
-  if (!isOpen) return null;
+  // LOGIQUE DE FILTRAGE (Titre + Contenu)
+  const filteredPosts = query === ''
+    ? []
+    : posts.filter((post) => {
+      return (
+        post.title.toLowerCase().includes(query.toLowerCase()) ||
+        post.content?.toLowerCase().includes(query.toLowerCase()) ||
+        post.tags?.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+      );
+    }).slice(0, 10); // On limite à 10 résultats pour la performance
+
+  const handleSelect = (post) => {
+    setIsOpen(false);
+    setQuery('');
+    navigate(`/wiki/${post.slug}`);
+  };
 
   return (
-    <div 
-      className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-start justify-center pt-[15vh] p-4 animate-enter"
-      // 4. Fermer si on clique sur le fond gris
-      onClick={() => setIsOpen(false)}
-    >
-      <div 
-        className="w-full max-w-xl bg-wiki-bg border border-wiki-border rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[60vh]"
-        onClick={e => e.stopPropagation()} // Empêche la fermeture si on clique DANS la boîte
-      >
-        
-        {/* Barre de recherche */}
-        <div className="flex items-center gap-3 p-4 border-b border-wiki-border bg-wiki-surface/50">
-          <Search className="text-wiki-muted shrink-0" size={20} />
-          <input 
-            ref={inputRef}
-            type="text" 
-            className="flex-1 bg-transparent text-lg text-wiki-text placeholder-wiki-muted/50 outline-none"
-            placeholder="Rechercher un article, un tag..."
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-          />
-          <button onClick={() => setIsOpen(false)} className="text-wiki-muted hover:text-wiki-text transition-colors">
-            <X size={20} />
-          </button>
-        </div>
+    <Transition.Root show={isOpen} as={Fragment}>
+      <Dialog as="div" className="relative z-50" onClose={setIsOpen}>
+        <Transition.Child
+          as={Fragment}
+          enter="ease-out duration-300"
+          enterFrom="opacity-0"
+          enterTo="opacity-100"
+          leave="ease-in duration-200"
+          leaveFrom="opacity-100"
+          leaveTo="opacity-0"
+        >
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" />
+        </Transition.Child>
 
-        {/* Résultats */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-          {!query ? (
-            <div className="text-center py-8 text-wiki-muted text-sm">
-              Commencez à taper pour rechercher...
-            </div>
-          ) : filteredPosts.length === 0 ? (
-            <div className="text-center py-8 text-wiki-muted text-sm">
-              Aucun résultat pour "{query}"
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {filteredPosts.map(post => (
-                <button
-                  key={post.id}
-                  onClick={() => handleSelect(post.slug)}
-                  className="w-full text-left flex items-center justify-between p-3 rounded-lg hover:bg-wiki-accent hover:text-white group transition-all"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <FileText size={18} className="text-wiki-muted group-hover:text-white/80" />
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-bold truncate">{post.title}</span>
-                      <div className="flex items-center gap-2 text-xs text-wiki-muted group-hover:text-white/70">
-                        <span className="font-mono bg-wiki-bg/50 px-1 rounded border border-wiki-border/50 group-hover:border-white/30">{post.folder}</span>
-                        {post.tags?.slice(0, 3).map(tag => (
-                          <span key={tag} className="opacity-70">#{tag}</span>
-                        ))}
-                      </div>
-                    </div>
+        <div className="fixed inset-0 z-10 overflow-y-auto p-4 sm:p-6 md:p-20">
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0 scale-95"
+            enterTo="opacity-100 scale-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100 scale-100"
+            leaveTo="opacity-0 scale-95"
+          >
+            <Dialog.Panel className="mx-auto max-w-xl transform divide-y divide-wiki-border overflow-hidden rounded-xl bg-wiki-surface border border-wiki-border shadow-2xl transition-all">
+              <Combobox onChange={handleSelect}>
+                <div className="relative">
+                  <Search
+                    className="pointer-events-none absolute top-3.5 left-4 h-5 w-5 text-wiki-muted"
+                    aria-hidden="true"
+                  />
+                  <Combobox.Input
+                    className="h-12 w-full border-0 bg-transparent pl-11 pr-4 text-wiki-text placeholder-wiki-muted focus:ring-0 sm:text-sm outline-none"
+                    placeholder="Rechercher dans le Wiki..."
+                    onChange={(event) => setQuery(event.target.value)}
+                    value={query}
+                    autoComplete="off"
+                  />
+                </div>
+
+                {filteredPosts.length > 0 && (
+                  <Combobox.Options static className="max-h-96 scroll-py-3 overflow-y-auto p-3 custom-scrollbar">
+                    {filteredPosts.map((post) => {
+                      // On calcule l'extrait ici
+                      const snippet = getSnippet(post.content, query);
+                      const isTitleMatch = post.title.toLowerCase().includes(query.toLowerCase());
+
+                      return (
+                        <Combobox.Option
+                          key={post.id}
+                          value={post}
+                          className={({ active }) =>
+                            `flex cursor-pointer select-none rounded-xl p-3 transition-colors ${active ? 'bg-wiki-accent/10' : ''
+                            }`
+                          }
+                        >
+                          {({ active }) => (
+                            <div className="flex items-start gap-3 w-full overflow-hidden">
+                              <div className={`mt-1 flex h-8 w-8 flex-none items-center justify-center rounded-lg border ${active ? 'border-wiki-accent/30 bg-wiki-accent/20' : 'border-wiki-border bg-wiki-bg'}`}>
+                                <FileText className={`h-4 w-4 ${active ? 'text-wiki-accent' : 'text-wiki-muted'}`} />
+                              </div>
+
+                              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                                {/* TITRE */}
+                                <span className={`truncate text-sm font-bold ${active ? 'text-wiki-text' : 'text-wiki-text/80'}`}>
+                                  {isTitleMatch ? (
+                                    /* Surlignage dans le titre aussi */
+                                    <span>
+                                      {post.title.split(new RegExp(`(${query})`, 'gi')).map((part, i) =>
+                                        part.toLowerCase() === query.toLowerCase() ? <span key={i} className="text-wiki-accent">{part}</span> : part
+                                      )}
+                                    </span>
+                                  ) : post.title}
+                                </span>
+
+                                {/* CHEMIN DU DOSSIER */}
+                                <span className="text-[10px] text-wiki-muted font-mono flex items-center gap-1">
+                                  {post.folder}
+                                  {post.tags && post.tags.length > 0 && (
+                                    <>
+                                      <span className="text-wiki-border mx-1">|</span>
+                                      <Hash size={8} /> {post.tags.slice(0, 2).join(', ')}
+                                    </>
+                                  )}
+                                </span>
+
+                                {/* EXTRAIT DE CONTENU (SNIPPET) */}
+                                {snippet && !isTitleMatch && (
+                                  <div className="mt-1 text-xs text-wiki-muted/70 italic truncate border-l-2 border-wiki-border pl-2">
+                                    {snippet}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </Combobox.Option>
+                      );
+                    })}
+                  </Combobox.Options>
+                )}
+
+                {query !== '' && filteredPosts.length === 0 && (
+                  <div className="py-14 px-6 text-center text-sm sm:px-14">
+                    <FileText className="mx-auto h-6 w-6 text-wiki-muted mb-2 opacity-50" />
+                    <p className="font-semibold text-wiki-text">Aucun résultat.</p>
+                    <p className="text-wiki-muted mt-1">Essayez un autre mot-clé ou créez un nouvel article.</p>
                   </div>
-                  <ArrowRight size={16} className="opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+                )}
 
-        {/* Footer */}
-        <div className="p-2 border-t border-wiki-border bg-wiki-bg text-[10px] text-wiki-muted flex justify-end gap-3 px-4">
-          <span className="flex items-center gap-1"><kbd className="bg-wiki-surface border border-wiki-border rounded px-1">Esc</kbd> pour fermer</span>
+                {query === '' && (
+                  <div className="py-10 px-6 text-center text-xs text-wiki-muted">
+                    <div className="inline-flex items-center gap-1 border border-wiki-border px-2 py-1 rounded mx-1 bg-wiki-bg"><span className="text-xs">CTRL</span><span>K</span></div>
+                    pour ouvrir,
+                    <div className="inline-flex items-center gap-1 border border-wiki-border px-2 py-1 rounded mx-1 bg-wiki-bg"><span>↑</span><span>↓</span></div>
+                    pour naviguer.
+                  </div>
+                )}
+              </Combobox>
+            </Dialog.Panel>
+          </Transition.Child>
         </div>
-
-      </div>
-    </div>
+      </Dialog>
+    </Transition.Root>
   );
 }
