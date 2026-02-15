@@ -368,14 +368,14 @@ function AppContent() {
                 <LayoutDashboard size={14} className="shrink-0" />
                 <span className="truncate font-bold">Tableau de Bord</span>
               </Link>
-              <Link to="/admin" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-wiki-accent/10 border border-wiki-accent/20 rounded-lg px-3 py-2 text-sm text-wiki-accent hover:bg-wiki-accent hover:text-white transition-colors">
-                <FilePlus size={14} className="shrink-0" /><span className="truncate font-bold">Nouvel Article</span>
+              <Link to="/users" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-lg px-3 py-2 text-sm text-purple-400 hover:bg-purple-500 hover:text-white transition-colors">
+                <Users size={14} className="shrink-0" /><span className="truncate font-bold">Gérer Utilisateurs</span>
               </Link>
               <Link to="/manager" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2 text-sm text-green-400 hover:bg-green-500 hover:text-white transition-colors">
                 <LayoutGrid size={14} className="shrink-0" /><span className="truncate font-medium">Gestion Contenu</span>
               </Link>
-              <Link to="/users" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-lg px-3 py-2 text-sm text-purple-400 hover:bg-purple-500 hover:text-white transition-colors">
-                <Users size={14} className="shrink-0" /><span className="truncate font-bold">Gérer Utilisateurs</span>
+              <Link to="/admin" onClick={handleNavigate} className="w-full flex items-center gap-2 bg-wiki-accent/10 border border-wiki-accent/20 rounded-lg px-3 py-2 text-sm text-wiki-accent hover:bg-wiki-accent hover:text-white transition-colors">
+                <FilePlus size={14} className="shrink-0" /><span className="truncate font-bold">Nouvel Article</span>
               </Link>
             </>
           )}
