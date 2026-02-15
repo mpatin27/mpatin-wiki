@@ -33,7 +33,8 @@ import Manager from './pages/Manager';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
 import UpdatePassword from './pages/UpdatePassword';
-import Dashboard from './pages/Dashboard'; // Importe la page
+import Dashboard from './pages/Dashboard';
+import Export from './pages/Export';
 
 const formatDate = (dateString) => {
   if (!dateString) return '';
@@ -458,6 +459,8 @@ function AppContent() {
             <Route path="/admin" element={isAdmin ? <Admin /> : <NotFound />} />
             <Route path="/admin/:slug" element={isAdmin ? <Admin /> : <NotFound />} />
             <Route path="/dashboard" element={isAdmin ? <Dashboard /> : <NotFound />} />
+            <Route path="/export" element={isAdmin ? <Export /> : <NotFound />} />
+
 
             <Route path="*" element={<NotFound />} />
           </Routes>

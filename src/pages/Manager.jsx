@@ -3,13 +3,14 @@ import { supabase } from '../supabaseClient';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   Search, Folder, Calendar, Eye, Edit, Trash2, 
-  ArrowUpDown, Filter, FileText, LayoutGrid 
+  ArrowUpDown, Filter, FileText, LayoutGrid, Download // <--- 1. Import icône Download
 } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
 
 export default function Manager() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false); // <--- 2. État pour vérifier si admin
   const navigate = useNavigate();
 
   // --- ÉTATS DES FILTRES ---
@@ -20,25 +21,37 @@ export default function Manager() {
   // --- ÉTATS SUPPRESSION ---
   const [postToDelete, setPostToDelete] = useState(null);
 
-  // 1. CHARGEMENT
-  const fetchPosts = async () => {
+  // 1. CHARGEMENT & VÉRIFICATION ADMIN
+  const fetchData = async () => {
     setLoading(true);
+    
+    // A. Récupérer l'utilisateur courant pour vérifier le rôle
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      setIsAdmin(profile?.role === 'admin');
+    }
+
+    // B. Récupérer les posts
     const { data } = await supabase
       .from('wiki_posts')
       .select('*')
-      .order('updated_at', { ascending: false }); // Par défaut : le plus récent en haut
+      .order('updated_at', { ascending: false });
     if (data) setPosts(data);
+    
     setLoading(false);
   };
 
-  useEffect(() => { fetchPosts(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
   // 2. LOGIQUE DE TRI ET FILTRE
-  // On récupère la liste unique des dossiers pour le menu déroulant
   const folders = ['All', ...new Set(posts.map(p => p.folder))].sort();
 
   const filteredPosts = posts
-    // A. Filtre Recherche (Titre ou Tags)
     .filter(post => {
       const matchSearch = 
         post.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -48,14 +61,12 @@ export default function Manager() {
       
       return matchSearch && matchFolder;
     })
-    // B. Tri Dynamique
     .sort((a, b) => {
       if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
       if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
 
-  // Fonction pour changer le tri au clic sur une colonne
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -70,9 +81,7 @@ export default function Manager() {
     const { error } = await supabase.from('wiki_posts').delete().eq('id', postToDelete.id);
     
     if (!error) {
-      // Mise à jour locale
       setPosts(prev => prev.filter(p => p.id !== postToDelete.id));
-      // Nettoyage historique local (optionnel mais propre)
       const history = JSON.parse(localStorage.getItem('wiki_history') || '[]');
       localStorage.setItem('wiki_history', JSON.stringify(history.filter(h => h.id !== postToDelete.id)));
     } else {
@@ -96,12 +105,26 @@ export default function Manager() {
             {filteredPosts.length} article{filteredPosts.length > 1 ? 's' : ''} trouvé{filteredPosts.length > 1 ? 's' : ''}
           </p>
         </div>
-        <button 
-          onClick={() => navigate('/admin')} 
-          className="bg-wiki-accent text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20 text-sm flex items-center gap-2"
-        >
-          <Edit size={16} /> Créer un Article
-        </button>
+
+        {/* BOUTONS D'ACTION */}
+        <div className="flex items-center gap-3">
+          {/* 3. NOUVEAU BOUTON EXPORT (Visible uniquement si Admin) */}
+          {isAdmin && (
+            <button 
+              onClick={() => navigate('/export')} 
+              className="bg-wiki-surface border border-wiki-border text-wiki-text px-4 py-2 rounded-lg font-bold hover:bg-wiki-bg transition-colors text-sm flex items-center gap-2"
+            >
+              <Download size={16} /> Exporter
+            </button>
+          )}
+
+          <button 
+            onClick={() => navigate('/admin')} 
+            className="bg-wiki-accent text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 transition-colors shadow-lg shadow-blue-500/20 text-sm flex items-center gap-2"
+          >
+            <Edit size={16} /> Créer un Article
+          </button>
+        </div>
       </div>
 
       {/* BARRE D'OUTILS (Filtres) */}
