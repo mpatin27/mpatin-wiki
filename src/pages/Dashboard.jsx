@@ -77,9 +77,9 @@ export default function Dashboard() {
 
       {/* 1. CARTES DE STATS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard icon={<FileText size={20}/>} label="Articles" value={stats.totalPosts} color="text-blue-400" bg="bg-blue-500/10" border="border-blue-500/20" />
+        <Link to="/manager"><StatCard icon={<FileText size={20}/>} label="Articles" value={stats.totalPosts} color="text-blue-400" bg="bg-blue-500/10" border="border-blue-500/20"/></Link>
         <StatCard icon={<Eye size={20}/>} label="Vues Totales" value={stats.totalViews} color="text-green-400" bg="bg-green-500/10" border="border-green-500/20" />
-        <StatCard icon={<Users size={20}/>} label="Utilisateurs" value={stats.totalUsers} color="text-purple-400" bg="bg-purple-500/10" border="border-purple-500/20" />
+        <Link to="/users"><StatCard icon={<Users size={20}/>} label="Utilisateurs" value={stats.totalUsers} color="text-purple-400" bg="bg-purple-500/10" border="border-purple-500/20" /></Link>
         <StatCard icon={<MessageSquare size={20}/>} label="Commentaires" value={stats.totalComments} color="text-orange-400" bg="bg-orange-500/10" border="border-orange-500/20" />
       </div>
 

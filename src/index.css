@@ -48,3 +48,58 @@ body {
   animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.prose pre code {
+  background-color: transparent !important; /* Enlève le fond bleu/gris du texte */
+  color: inherit !important; /* Utilise la couleur de texte définie par le thème du bloc */
+  padding: 0 !important; /* Enlève les espacements parasites autour du texte */
+  font-size: 0.9em; /* Ajustement optionnel de la taille */
+}
+
+/* --- CSS POUR L'IMPRESSION (PDF) --- */
+@media print {
+  /* Cacher la Sidebar et les éléments fixes */
+  aside, header, .fixed {
+    display: none !important;
+  }
+
+  /* Forcer le fond blanc et texte noir */
+  body, #root, main, #main-content {
+    background-color: white !important;
+    background-image: none !important;
+    color: black !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Rendre visible tout le contenu de l'article */
+  #main-content > * {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* Ajuster le padding de l'article */
+  .max-w-7xl {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Assurer que le texte est lisible */
+  p, h1, h2, h3, li, code {
+    color: black !important;
+    text-shadow: none !important;
+  }
+
+  /* Bordures des blocs de code plus fines et claires */
+  pre, code {
+    background-color: #f3f4f6 !important; /* Gris très clair */
+    border: 1px solid #e5e7eb !important;
+    color: black !important;
+  }
+}

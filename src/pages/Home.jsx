@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Link } from 'react-router-dom';
 import { Star, Clock, TrendingUp, FileText, Book, Trash2 } from 'lucide-react';
-import ConfirmModal from '../components/ConfirmModal'; // <--- IMPORT
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function Home() {
   const [favorites, setFavorites] = useState([]);
@@ -10,8 +10,6 @@ export default function Home() {
   const [history, setHistory] = useState([]);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // Nouvel état pour la modale
   const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   useEffect(() => {
@@ -50,18 +48,18 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 1. On demande à effacer (ouvre la modale)
   const requestClearHistory = (e) => {
     if (e) e.preventDefault();
     setShowHistoryModal(true);
   };
 
-  // 2. On confirme l'effacement (appelé par la modale)
   const performClearHistory = () => {
     localStorage.removeItem('wiki_history');
     setHistory([]);
+    setShowHistoryModal(false);
   };
 
+  // Composant Carte Interne
   const SectionCard = ({ title, icon: Icon, items, emptyMessage, colorClass, onAction, actionIcon: ActionIcon }) => (
     <div className="flex flex-col gap-4 animate-enter">
       <div className="flex justify-between items-center border-b border-wiki-border/50 pb-2">
@@ -89,19 +87,35 @@ export default function Home() {
             <Link 
               key={item.id} 
               to={`/wiki/${item.slug}`}
-              className="group bg-wiki-surface border border-wiki-border hover:border-wiki-accent rounded-xl p-3 transition-all hover:shadow-lg hover:shadow-blue-500/10 flex items-center justify-between"
+              className="group bg-wiki-surface border border-wiki-border hover:border-wiki-accent rounded-xl p-3 transition-all hover:shadow-lg hover:shadow-blue-500/10 flex items-center justify-between gap-3 overflow-hidden"
             >
-              <div className="flex items-center gap-3 min-w-0">
+              {/* PARTIE GAUCHE (Icone + Texte) qui doit prendre la place dispo */}
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                
+                {/* Icone : Ne doit jamais rétrécir (shrink-0) */}
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-wiki-bg ${colorClass.replace('text-', 'text-opacity-80 bg-opacity-10 bg-')}`}>
                   <FileText size={16} />
                 </div>
-                <div className="flex flex-col min-w-0">
-                   <span className="font-bold text-sm text-wiki-text truncate group-hover:text-wiki-accent transition-colors">{item.title}</span>
-                   <span className="text-[10px] text-wiki-muted truncate">{item.folder}</span>
+
+                {/* Textes : Doivent rétrécir si besoin (min-w-0 + flex-1) */}
+                <div className="flex flex-col min-w-0 flex-1">
+                   {/* Utilisation de DIV et non SPAN pour que truncate fonctionne bien */}
+                   <div className="font-bold text-sm text-wiki-text truncate group-hover:text-wiki-accent transition-colors block" title={item.title}>
+                     {item.title}
+                   </div>
+                   <div className="text-[10px] text-wiki-muted truncate block">
+                     {item.folder}
+                   </div>
                 </div>
               </div>
+              
+              {/* PARTIE DROITE (Badge Vues) : Ne doit jamais rétrécir */}
               {item.views !== undefined && (
-                 <span className="text-[10px] font-mono text-wiki-muted bg-wiki-bg px-1.5 py-0.5 rounded border border-wiki-border/50">{item.views} vus</span>
+                 <div className="shrink-0">
+                    <span className="text-[10px] font-mono text-wiki-muted bg-wiki-bg px-1.5 py-0.5 rounded border border-wiki-border/50 whitespace-nowrap">
+                      {item.views} vus
+                    </span>
+                 </div>
               )}
             </Link>
           ))
@@ -127,8 +141,6 @@ export default function Home() {
 
       {/* DASHBOARD GRID */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pb-20">
-        
-        {/* COLONNE 1 */}
         <SectionCard 
           title="Mes Favoris" 
           icon={Star} 
@@ -137,18 +149,16 @@ export default function Home() {
           emptyMessage={session ? "Aucun favori pour l'instant." : "Connectez-vous pour voir vos favoris."}
         />
 
-        {/* COLONNE 2 : Avec l'action vers la modale */}
         <SectionCard 
           title="Reprendre la lecture" 
           icon={Clock} 
           items={history} 
           colorClass="text-blue-400"
           emptyMessage="Votre historique est vide."
-          onAction={requestClearHistory} // <--- Lance la modale
+          onAction={requestClearHistory}
           actionIcon={Trash2}
         />
 
-        {/* COLONNE 3 */}
         <SectionCard 
           title="Les plus lus" 
           icon={TrendingUp} 
@@ -156,16 +166,14 @@ export default function Home() {
           colorClass="text-emerald-400"
           emptyMessage="Pas encore assez de données."
         />
-
       </div>
 
-      {/* LA MODALE */}
       <ConfirmModal
         isOpen={showHistoryModal}
         onClose={() => setShowHistoryModal(false)}
         onConfirm={performClearHistory}
         title="Effacer l'historique ?"
-        message="Voulez-vous vraiment effacer votre historique de lecture local ? Cette liste sera remise à zéro."
+        message="Voulez-vous vraiment effacer votre historique de lecture local ?"
         confirmText="Effacer"
         isDanger={true}
       />
