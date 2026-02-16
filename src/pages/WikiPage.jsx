@@ -300,7 +300,7 @@ export default function WikiPage({ session, isAdmin, myFavorites, onToggleFavori
       </div> 
 
       {/* 3. CHAT FLOTTANT AVANCÉ (CSS AÉRÉ) */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end pointer-events-none print:hidden">
+      <div className="fixed bottom-12 right-6 z-50 flex flex-col items-end pointer-events-none print:hidden">
           {showChat && (
               <div className="mb-4 w-80 md:w-96 bg-wiki-surface border border-wiki-border rounded-xl shadow-2xl overflow-hidden pointer-events-auto animate-enter flex flex-col max-h-[600px]">
                   
