@@ -66,7 +66,7 @@ export default function Generator() {
         const prompt = `Rédige un article technique détaillé et structuré au format Markdown sur le sujet : "${item.title}". Utilise des titres, des listes, du gras et des blocs de code si pertinent. L'article doit être pédagogique.`;
         
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
             {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

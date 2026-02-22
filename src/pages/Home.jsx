@@ -28,7 +28,7 @@ export default function Home() {
       .select('id, title, slug, folder, views')
       .eq('is_public', true)
       .order('views', { ascending: false })
-      .limit(5);
+      .limit(4);
     if (trendData) setTrending(trendData);
 
     // 2. FAVORIS
@@ -43,7 +43,7 @@ export default function Home() {
 
     // 3. HISTORIQUE
     const localHistory = JSON.parse(localStorage.getItem('wiki_history') || '[]');
-    setHistory(localHistory.slice(0, 5));
+    setHistory(localHistory.slice(0, 4));
 
     setLoading(false);
   };
